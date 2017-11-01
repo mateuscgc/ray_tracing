@@ -15,7 +15,7 @@ LIBPATH = -L/opt/local/lib
 LDFLAGS = -lGLEW -lGL -lGLU -lglut -lm
 # LDFLAGS = -framework OpenGL -framework GLUT -lglew 
 
-# OBJFILES = initShaders.o loadpng.o
+OBJFILES = initShaders.o
 
 # compile rules
 .c.o:	$*.h
@@ -33,7 +33,7 @@ all:	ray_tracing
 #   @echo "Linking ...."
 #   $(CXX)  $(CXXFLAG) $(INCFLAGS) $(LIBPATH) $^ $(LDFLAGS) -o $@
 	
-ray_tracing:	ray_tracing.o
+ray_tracing:	initShaders.o ray_tracing.o
 	@echo "Linking ...."
 	$(CXX)  $(CXXFLAG) $(INCFLAGS) $(LIBPATH) $^ $(LDFLAGS) -o $@ 
 		
