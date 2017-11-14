@@ -19,13 +19,13 @@
 
 using namespace std;
 
-typedef vector< vector<double> > matrix;
-#define point(x) matrix x(4, vector<double>(1))
-#define transformation_matrix(x) matrix x(4, vector<double>(4))
 #define PI acos(-1)
 
-int SCREEN_WIDTH = 150;
-int SCREEN_HEIGHT = 150;
+int CAMERA_VIEW_WIDTH = 300;
+int CAMERA_VIEW_HEIGHT = 300;
+
+int SCREEN_WIDTH;
+int SCREEN_HEIGHT;
 
 int MAX_RECURSION = 3;
 
@@ -148,7 +148,11 @@ struct Sphere : public Implicit {
 
 struct Plane : Implicit {
     glm::vec3 normal;
+    glm::vec3 camera_system_normal;
+    glm::vec3 position;
+    glm::vec3 camera_system_position;
     double d;
+    double d_camera_system;
 
     glm::vec3 matAmb[2];
     glm::vec3 matDif[2];
@@ -177,22 +181,24 @@ struct Plane : Implicit {
             matDif{matDif1, matDif2},
             matSpec{matSpec1, matSpec2},
             square_side(square_side)
-    {}
+    {
+        position = normal * d;
+    }
 
     virtual bool intersect(const glm::vec3& ray, const glm::vec3& ori) {
         // cout << glm::dot(normal, ray) << endl;
-        return glm::dot(normal, ray) != 0;
+        return glm::dot(camera_system_normal, ray) != 0;
     }
 
     virtual vector<double> intersections_time(const glm::vec3& ray, const glm::vec3& ori, const glm::vec3& camera_position) {
         // glm::vec3 new_ori = ori - camera.position;
-        return { -((glm::dot(normal, ori+camera_position) - d) / glm::dot(normal, ray)) };
+        return { -((glm::dot(camera_system_normal, ori) - d_camera_system) / glm::dot(camera_system_normal, ray)) };
         // return { -(normal.x*ori.x + normal.y*ori.y + normal.z*ori.z - d) / (normal.x*ray.x + normal.y*ray.y + normal.z*ray.z) };
     }
 
     int get_color_index(const glm::vec3& position) {
-        int x = (int)(glm::distance(position, glm::vec3(position.x, 0, 0)) / square_side) % 2;
-        int z = (int)(glm::distance(position, glm::vec3(0, 0, position.z)) / square_side) % 2;
+        int x = (int)(glm::distance(position, glm::vec3(position.x, camera_system_position.y, camera_system_position.z)) / square_side) % 2;
+        int z = (int)(glm::distance(position, glm::vec3(camera_system_position.x, camera_system_position.y, position.z)) / square_side) % 2;
         return x ^ z;
     }
 
@@ -206,10 +212,12 @@ struct Plane : Implicit {
         return matSpec[get_color_index(position)];
     }
     virtual glm::vec3 getNormal(const glm::vec3& ori, const glm::vec3& position) {
-        return normal;
+        return camera_system_normal;
     }
     virtual void toCameraSystem(const glm::mat4& view_matrix) {
-        return;
+        camera_system_normal = glm::mat3(view_matrix) * normal;
+        camera_system_position = glm::vec3(view_matrix * glm::vec4(position, 1.0));
+        d_camera_system = glm::dot(camera_system_position, camera_system_normal);
     }
 };
 
@@ -409,23 +417,23 @@ void create_scene_objects() {
 
     // ===================== PLANES =======================
 
-    // objects.push_back(new Plane(
-    //     glm::vec3(0.0, 1.0, 0.0),
-    //     0,
-    //     ++id,
-    //     0,
-    //     1,
-    //     glm::vec3(0.7,0.0,0.0),
-    //     glm::vec3(0.7,0.7,0.0),
+    objects.push_back(new Plane(
+        glm::vec3(0.0, 1.0, 0.0),
+        0,
+        ++id,
+        0,
+        1,
+        glm::vec3(0.7,0.0,0.0),
+        glm::vec3(0.7,0.7,0.0),
 
-    //     glm::vec3(0.7,0.0,0.0),
-    //     glm::vec3(0.7,0.7,0.0),
+        glm::vec3(0.7,0.0,0.0),
+        glm::vec3(0.7,0.7,0.0),
 
-    //     glm::vec3(0.6,0.6,0.6),
-    //     glm::vec3(0.2,0.2,0.2),
+        glm::vec3(0.6,0.6,0.6),
+        glm::vec3(0.2,0.2,0.2),
 
-    //     0.1
-    // ));
+        0.1
+    ));
 
     // ======================= LIGHTS =====================
 
@@ -595,17 +603,17 @@ vector<float> ray_tracing() {
         l.camera_system_position = glm::vec3(camera.view_matrix * glm::dvec4(l.position, 1.0));
     }
 
-    double pixel_size = tan(camera.field_of_view/2) / SCREEN_HEIGHT;
-    double SCREEN_HALF_WIDTH = SCREEN_WIDTH/2;
-    double SCREEN_HALF_HEIGHT = SCREEN_HEIGHT/2;
+    double pixel_size = tan(camera.field_of_view/2) / CAMERA_VIEW_HEIGHT;
+    double CAMERA_VIEW_HALF_WIDTH = CAMERA_VIEW_WIDTH/2;
+    double CAMERA_VIEW_HALF_HEIGHT = CAMERA_VIEW_HEIGHT/2;
     double HALF_PIXEL_SIZE = pixel_size/2;
 
     double cur_z = 1;
     
-    for(int j = 0; j < SCREEN_HEIGHT; j++) {
-        for(int i = 0; i < SCREEN_WIDTH; i++) {
-            double cur_x = (i - SCREEN_HALF_WIDTH)*pixel_size - HALF_PIXEL_SIZE;
-            double cur_y = (j - SCREEN_HALF_HEIGHT)*pixel_size - HALF_PIXEL_SIZE;
+    for(int j = 0; j < CAMERA_VIEW_HEIGHT; j++) {
+        for(int i = 0; i < CAMERA_VIEW_WIDTH; i++) {
+            double cur_x = (i - CAMERA_VIEW_HALF_WIDTH)*pixel_size - HALF_PIXEL_SIZE;
+            double cur_y = (j - CAMERA_VIEW_HALF_HEIGHT)*pixel_size - HALF_PIXEL_SIZE;
 
             glm::vec3 eye_ray(cur_x, cur_y, cur_z);
             eye_ray = glm::normalize(eye_ray);
@@ -664,7 +672,7 @@ void display(void) {
     glEnable(GL_TEXTURE_2D);
     glTexParameterf(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_NEAREST); //GL_NEAREST = no smoothing
     glTexParameterf(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_NEAREST);
-    glTexImage2D(GL_TEXTURE_2D, 0, GL_RGB, SCREEN_WIDTH, SCREEN_HEIGHT, 0, GL_RGB, GL_FLOAT, &image[0]);
+    glTexImage2D(GL_TEXTURE_2D, 0, GL_RGB, CAMERA_VIEW_WIDTH, CAMERA_VIEW_HEIGHT, 0, GL_RGB, GL_FLOAT, &image[0]);
     // glTexImage2D(GL_TEXTURE_2D, 0, 4, u2, v2, 0, GL_RGBA, GL_UNSIGNED_BYTE, &image2[0]);
     
     //PROJECTION
@@ -823,7 +831,7 @@ void reshape(int w, int h) {
 
     SCREEN_WIDTH    = w;
     SCREEN_HEIGHT   = h;
-    glViewport(0, 0, SCREEN_WIDTH, SCREEN_HEIGHT);      
+    glViewport(0, 0, SCREEN_WIDTH, SCREEN_HEIGHT);
 }
 
 /* ************************************************************************* */
@@ -908,7 +916,7 @@ int main(int argc, char *argv[]) {
     glutInit(&argc, argv);
     glutInitDisplayMode(GLUT_RGBA | GLUT_DOUBLE);
     glutCreateWindow("Ray Tracing");
-    glutReshapeWindow(SCREEN_WIDTH, SCREEN_HEIGHT);
+    glutReshapeWindow(CAMERA_VIEW_WIDTH, CAMERA_VIEW_HEIGHT);
     glutDisplayFunc(display);
     glutReshapeFunc(reshape);
     glutKeyboardFunc(keyboard);
